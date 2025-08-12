@@ -44,8 +44,7 @@ ENV APP_GID=1001
 RUN groupadd --gid ${APP_GID} app && \
     useradd --uid ${APP_UID} --gid ${APP_GID} --shell /bin/bash --create-home app
 
-# Install production dependencies (Debian-compatible)
-# NOTE: 'su-exec' is not in Debian repos. We install 'sed' to patch the entrypoint script instead.
+# Install production dependencies and 'sed' for patching
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     sqlite3 \
@@ -68,8 +67,8 @@ RUN chmod +x /app/backend/cmd/start.sh
 COPY --chown=app:app ./scripts/docker-entrypoint.sh /app/scripts/docker-entrypoint.sh
 RUN chmod +x /app/scripts/docker-entrypoint.sh
 
-# Patch the entrypoint script to use 'su' (available in Debian) instead of 'su-exec'
-RUN sed -i 's|exec su-exec app /app/backend/cmd/start.sh|exec su app -c "/app/backend/cmd/start.sh"|' /app/scripts/docker-entrypoint.sh
+# Robustly patch the entrypoint script to use 'su' instead of 'su-exec'
+RUN sed -i '/su-exec/c\exec su app -c "/app/backend/cmd/start.sh"' /app/scripts/docker-entrypoint.sh
 
 COPY --from=builder --chown=app:app /app/dist ./backend/dist
 COPY --from=builder --chown=app:app /app/public/locales ./backend/dist/locales
