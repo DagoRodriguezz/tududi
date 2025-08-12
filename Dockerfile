@@ -42,7 +42,7 @@ RUN npm cache clean --force && \
 ####################
 # Production stage #
 ####################
-FROM node:22-alpine AS production
+FROM node:22-slim AS production
 
 ENV APP_UID=1001
 ENV APP_GID=1001
