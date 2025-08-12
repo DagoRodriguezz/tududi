@@ -1,7 +1,7 @@
 ###############
 # BUILD STAGE #
 ###############
-# Use Playwright image with browsers and deps preinstalled for running E2E tests
+# Use Playwright image with browsers and deps preinstalled
 FROM mcr.microsoft.com/playwright:v1.54.2-jammy AS builder
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -44,7 +44,8 @@ ENV APP_GID=1001
 RUN groupadd --gid ${APP_GID} app && \
     useradd --uid ${APP_UID} --gid ${APP_GID} --shell /bin/bash --create-home app
 
-# Install production dependencies (Debian-compatible commands)
+# Install production dependencies (Debian-compatible)
+# NOTE: 'su-exec' is not in Debian repos. We install 'sed' to patch the entrypoint script instead.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     sqlite3 \
@@ -53,8 +54,7 @@ RUN apt-get update && \
     procps \
     dumb-init \
     bash \
-    su-exec && \
-    # Clean up to reduce image size
+    sed && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -67,6 +67,9 @@ RUN chmod +x /app/backend/cmd/start.sh
 
 COPY --chown=app:app ./scripts/docker-entrypoint.sh /app/scripts/docker-entrypoint.sh
 RUN chmod +x /app/scripts/docker-entrypoint.sh
+
+# Patch the entrypoint script to use 'su' (available in Debian) instead of 'su-exec'
+RUN sed -i 's|exec su-exec app /app/backend/cmd/start.sh|exec su app -c "/app/backend/cmd/start.sh"|' /app/scripts/docker-entrypoint.sh
 
 COPY --from=builder --chown=app:app /app/dist ./backend/dist
 COPY --from=builder --chown=app:app /app/public/locales ./backend/dist/locales
