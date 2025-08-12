@@ -18,7 +18,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-# Install all dependencies (frontend and backend)
+# Install all dependencies
 RUN npm install --no-audit --no-fund
 
 # Copy source code
@@ -26,13 +26,6 @@ COPY . ./
 
 # Build frontend
 RUN NODE_ENV=production npm run frontend:build
-
-# Run backend tests
-# RUN npm run backend:test
-
-# Uncomment to run E2E tests (browsers already present in this base image)
-#ENV CI=1
-#RUN npm run test:ui
 
 # Cleanup
 RUN npm cache clean --force && \
@@ -47,48 +40,43 @@ FROM node:22-slim AS production
 ENV APP_UID=1001
 ENV APP_GID=1001
 
-RUN addgroup -g ${APP_GID} -S app && \
-    adduser -S app -u ${APP_UID} -G app
+# Create a non-root user and group (Debian-compatible commands)
+RUN groupadd --gid ${APP_GID} app && \
+    useradd --uid ${APP_UID} --gid ${APP_GID} --shell /bin/bash --create-home app
 
-RUN apk add --no-cache --virtual .runtime-deps \
-    sqlite \
+# Install production dependencies (Debian-compatible commands)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    sqlite3 \
     openssl \
     curl \
-    procps-ng \
+    procps \
     dumb-init \
     bash \
     su-exec && \
-    rm -rf /var/cache/apk/* /tmp/* && \
-    rm -rf /usr/share/man /usr/share/doc /usr/share/info
+    # Clean up to reduce image size
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy backend
+# Copy necessary files and set permissions
 COPY --chown=app:app ./backend/ /app/backend/
 RUN chmod +x /app/backend/cmd/start.sh
 
 COPY --chown=app:app ./scripts/docker-entrypoint.sh /app/scripts/docker-entrypoint.sh
 RUN chmod +x /app/scripts/docker-entrypoint.sh
 
-# Copy frontend
-RUN rm -rf /app/backend/dist
 COPY --from=builder --chown=app:app /app/dist ./backend/dist
 COPY --from=builder --chown=app:app /app/public/locales ./backend/dist/locales
 COPY --from=builder --chown=app:app /app/node_modules ./node_modules
 COPY --from=builder --chown=app:app /app/package.json /app/
 
-# Create necessary directories
-RUN mkdir -p /app/backend/db /app/backend/certs /app/backend/uploads
+RUN mkdir -p /app/backend/db /app/backend/certs /app/backend/uploads && \
+    chown -R app:app /app
 
-# Cleanup
-RUN apk del --no-cache .runtime-deps sqlite openssl curl && \
-    apk add --no-cache sqlite-libs openssl curl dumb-init su-exec && \
-    rm -rf /usr/local/lib/node_modules/npm/docs /usr/local/lib/node_modules/npm/man && \
-    rm -rf /root/.npm /tmp/* /var/tmp/* /var/cache/apk/*
-
-VOLUME ["/app/backend/db"]
-VOLUME ["/app/backend/uploads"]
+VOLUME ["/app/backend/db", "/app/backend/uploads"]
 
 EXPOSE 3002
 
